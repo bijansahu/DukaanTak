@@ -1,0 +1,32 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Each customer can read/write only their own profile
+    match /users/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+    }
+
+    // Catalogue: everyone signed-in can read; only you (console/admin app) can write
+    match /shops/{id}    { allow read: if request.auth != null; allow write: if false; }
+    match /products/{id} { allow read: if request.auth != null; allow write: if false; }
+
+    match /orders/{id} {
+      allow create: if request.auth != null
+                    && request.resource.data.customerId == request.auth.uid
+                    && request.resource.data.status == 'placed';
+      allow read:   if request.auth != null && resource.data.customerId == request.auth.uid;
+      // Customer may ONLY cancel, ONLY while still 'placed', ONLY within 2 minutes
+      allow update: if request.auth != null
+                    && resource.data.customerId == request.auth.uid
+                    && resource.data.status == 'placed'
+                    && request.resource.data.status == 'cancelled'
+                    && request.time < resource.data.createdAt + duration.value(2, 'm')
+                    && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status']);
+    }
+
+    match /issues/{id} {
+      allow create: if request.auth != null && request.resource.data.customerId == request.auth.uid;
+    }
+  }
+}
